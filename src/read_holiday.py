@@ -1,6 +1,5 @@
 import csv
 from datetime import datetime
-
 from src.data_types import HolidayData
 
 def parse_row(row: list[str]) -> HolidayData:

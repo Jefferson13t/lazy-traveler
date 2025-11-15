@@ -1,15 +1,16 @@
 import plotly.graph_objects as go
-from src.read_holiday import read_holidays
+import plotly.express as px
 import json
-from src.data_types import HolidayData, Solution
-
+from src.data_types import HolidayData
+from collections import defaultdict
 
 class SolutionVizualizer:
     """Displays the evolution of holidays across a Brazil map."""
 
     GEOJSON_PATH = "data/brazil_states.geojson"
+    OUTPUT_FILE = "output/animated_solution.html"
     BRAZIL_CENTER = dict(lat=-15, lon=-54)
-    REPRODUCTION_SPEED = 300
+    REPRODUCTION_SPEED = 500
     LAT_RANGE = [-35, 6] 
     LON_RANGE = [-75, -30]
 
@@ -64,71 +65,104 @@ class SolutionVizualizer:
                 lataxis=dict(range=self.LAT_RANGE),
                 lonaxis=dict(range=self.LON_RANGE),
             ),
-            paper_bgcolor="rgba(0,0,0,0)",  # remove fundo branco do gráfico
+            paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             title="Brazil Holiday Evolution Map",
             updatemenus=[{"type": "buttons", "buttons": [play_btn, pause_btn]}]
         )
 
-    def draw_travel_schedule(self, holidays: list[HolidayData], solution: Solution) -> None:
-        """Animate holidays by day of the year."""
+    def draw_travel_schedule(
+        self,
+        holidays: list[HolidayData],
+        solutions: list[list[dict[str, float]]]
+    ) -> None:
+        """Animate multiple travel solutions, each with its own color."""
+
+        colors = px.colors.qualitative.Plotly
+
+        by_day = defaultdict(list)
+        for h in holidays:
+            by_day[h.day_of_year].append(h)
+
         frames = []
+        days = sorted(by_day.keys())
 
-        for day in sorted({h.day_of_year for h in holidays}):
-            cities = [h for h in holidays if h.day_of_year == day]
-            if not cities:
-                continue
+        num_solutions = len(solutions)
 
-            if(day >= len(solution) - 1):
+        for step, day in enumerate(days):
+
+            if any(step >= len(sol) - 1 for sol in solutions):
                 break
 
-            lons = [h.lon for h in cities]
-            lats = [h.lat for h in cities]
+            cities = by_day[day]
+            lons = [c.lon for c in cities]
+            lats = [c.lat for c in cities]
             date_label = cities[0].date.strftime("%d/%m/%Y")
 
-            city_from = holidays[solution[day]]
-            city_to = holidays[solution[day + 1]]
+            frame_data = []
 
-            frame = go.Frame(
-                name=str(day),
-                data=[
-                    go.Scattergeo(
-                        lon=lons, lat=lats,
-                        mode="markers",
-                        marker=dict(size=7, color="green"),
-                        name=f"Day {day}"
-                    ),
-                    go.Scattergeo(
-                        lon=[city_from.lon, city_to.lon],
-                        lat=[city_from.lat, city_to.lat],
-                        mode="lines+markers",
-                        line=dict(width=2, color="blue"),
-                        marker=dict(size=6, color="red"),
-                        name=f"{city_from.city_name} → {city_to.city_name}",
-                    )
-                ],
-                
-                layout=go.Layout(
-                    annotations=[
-                        dict(
-                            text=date_label,
-                            x=1, y=0.95,
-                            xref="paper", yref="paper",
-                            showarrow=False,
-                            font=dict(size=18, color="black")
-                        ),
-                        dict(
-                            text=f"{city_from.city_name} -> {city_to.city_name}",
-                            x=1, y=0.90,
-                            xref="paper", yref="paper",
-                            showarrow=False,
-                            font=dict(size=18, color="black")
-                        ),
-                    ]
+            # Feridos do dia
+            frame_data.append(
+                go.Scattergeo(
+                    lon=lons,
+                    lat=lats,
+                    mode="markers",
+                    marker=dict(size=7, color="green"),
+                    name=f"Day {day}",
                 )
             )
 
-            frames.append(frame)
+            # Segmentos de soluções
+            for idx, sol in enumerate(solutions):
+                city_from = sol[step]
+                city_to = sol[step + 1]
+                color = colors[idx % len(colors)]
+
+                frame_data.append(
+                    go.Scattergeo(
+                        lon=[city_from["lon"], city_to["lon"]],
+                        lat=[city_from["lat"], city_to["lat"]],
+                        mode="lines+markers",
+                        line=dict(width=2, color=color),
+                        marker=dict(size=6, color="red"),
+                        name=f"Sol {idx+1}: {city_from['name']} → {city_to['name']}",
+                    )
+                )
+
+            # Anotações
+            annotations = [
+                dict(
+                    text=date_label,
+                    x=1, y=0.95,
+                    xref="paper", yref="paper",
+                    showarrow=False,
+                    font=dict(size=18),
+                )
+            ]
+
+            for idx, sol in enumerate(solutions):
+                city_from = sol[step]
+                city_to = sol[step + 1]
+                color = colors[idx % len(colors)]
+
+                annotations.append(
+                    dict(
+                        text=f"<span style='color:{color}'>Sol {idx+1}: {city_from['name']} → {city_to['name']}</span>",
+                        x=1, y=0.90 - idx * 0.07,
+                        xref="paper", yref="paper",
+                        showarrow=False,
+                        font=dict(size=16),
+                    )
+                )
+
+            frames.append(
+                go.Frame(
+                    name=str(step),
+                    data=frame_data,
+                    layout=go.Layout(annotations=annotations),
+                )
+            )
 
         self.fig.frames = frames
+        self.fig.write_html(self.OUTPUT_FILE)
         self.fig.show()

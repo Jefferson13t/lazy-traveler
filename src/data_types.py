@@ -19,5 +19,8 @@ class HolidayData:
         """Returns the index of the day on the year (1–365/366)."""
         return self.date.timetuple().tm_yday
 
-# Defines a solution as a list of indexes of the visited cities 
-Solution: TypeAlias = list[int]
+# # Defines a solution as a list of indexes of the visited cities 
+# # Solution: TypeAlias = list[int]
+# Solution: TypeAlias = list[dict[str, float]]
+
+
