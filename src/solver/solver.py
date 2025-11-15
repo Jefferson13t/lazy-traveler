@@ -91,5 +91,8 @@ def solve_tep(N, T, holidays, distances) -> tuple[list[str], float]:
             "plan": chosen,
         }
 
+        model.dispose()
+        env.dispose()
+
         return chosen, stats
 
