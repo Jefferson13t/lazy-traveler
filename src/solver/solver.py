@@ -33,6 +33,8 @@ def block_arc_constraint(model: Model, y, T, N, holidays) -> None:
            
 def solve_tep(N, T, holidays, distances) -> tuple[list[str], float]:
     with gp.Env() as env, gp.Model(env=env) as model:
+        model.setParam("MemLimit", 6) 
+        model.setParam('TimeLimit', 600)
         x = model.addVars(((i, t) for i in N for t in T), vtype = GRB.BINARY, name="x")
         y = model.addVars(((i, j, t) for i in N for j in N for t in T[:-1]),
                           vtype=GRB.BINARY, name="y")
@@ -56,4 +58,38 @@ def solve_tep(N, T, holidays, distances) -> tuple[list[str], float]:
             chosen_city = max(N, key=lambda i: x[i, t].X)
             chosen.append(chosen_city)
 
-        return chosen, model.ObjVal
+        runtime = model.Runtime
+        obj_val = model.ObjVal
+        mip_gap_final = None
+        try:
+            mip_gap_final = model.MIPGap
+        except gp.GurobiError:
+            pass
+
+        num_vars = model.NumVars
+        num_bin_vars = sum(1 for v in model.getVars() if v.VType == GRB.BINARY)
+        num_constrs = model.NumConstrs
+        node_count = model.NodeCount
+
+        # Número de movimentos (mudança de cidade)
+        num_moves = 0
+        for idx in range(1, len(T)):
+            if chosen[idx] != chosen[idx - 1]:
+                num_moves += 1
+
+        stats  = {
+            "n_cities": len(N),
+            "n_days": len(T),
+            "obj_val": obj_val,
+            "runtime_s": runtime,
+            "mip_gap": mip_gap_final,
+            "num_vars": num_vars,
+            "num_bin_vars": num_bin_vars,
+            "num_constrs": num_constrs,
+            "node_count": node_count,
+            "num_moves": num_moves,
+            "plan": chosen,
+        }
+
+        return chosen, stats
+
